@@ -1,0 +1,27 @@
+{
+  "name": "todolist-server",
+  "version": "1.0.0",
+  "description": "TodoList NodeJS Server",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "nodemon"
+  },
+  "author": "Aurélien VERNAY",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "16.3.1",
+    "express": "4.18.2",
+    "mysql": "github:mysqljs/mysql"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.16",
+    "@types/express": "4.17.21",
+    "@types/mysql": "^2.15.24",
+    "nodemon": "3.0.1",
+    "ts-node": "10.9.1",
+    "ts-node-dev": "2.0.0",
+    "typescript": "5.2.2"
+  }
+}
