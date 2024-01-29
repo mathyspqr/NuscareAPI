@@ -136,6 +136,26 @@ app.get(
   }
 );
 
+app.get(
+  "/nurscare/agendasprestationsall",
+  async (request: express.Request, result: express.Response) => {
+    try {
+      let agendasPrestations = await query(`
+      SELECT * from prestation_de_soin
+      `);
+
+      console.log(`Route "/nurscare/agendasprevisionnels" called`);
+      return result.status(200).json({
+        message: "Agendas prévisionnels récupérés avec succès",
+        agendasPrestations,
+      });
+    } catch (error) {
+      console.error("Error in /nurscare/agendasprevisionnels:", error);
+      return result.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 
 
 // ROUTE POUR RECUP UN USER
@@ -431,11 +451,11 @@ app.post("/nurscare/submitform", async (req, res) => {
 });
 
 
-//AJOUTER UNE INTERVENTION
 app.post('/nurscare/addintervention', async (req, res) => {
   try {
     const formData = req.body;
 
+    // 1. Insérer l'intervention
     const resultIntervention = await query(`
       INSERT INTO intervention (libelle_intervention, date_intervention_debut, date_intervention_fin, id_patient)
       VALUES (?, ?, ?, ?)
@@ -443,15 +463,31 @@ app.post('/nurscare/addintervention', async (req, res) => {
 
     const idIntervention = resultIntervention.insertId;
 
+    // 2. Insérer l'attribution
     const resultAttribution = await query(`
       INSERT INTO attribuer (id_intervention, id_personnel)
       VALUES (?, ?)
     `, [idIntervention, formData.id_personnel]);
 
-    console.log('Intervention and attribution added successfully');
-    res.status(201).json({ message: 'Intervention and attribution added successfully', resultIntervention, resultAttribution });
+    // 3. Insérer chaque id_prestation dans la table realiser et contenir
+    for (const idPrestation of formData.id_prestations) {
+      // 3.1. Insérer dans la table realiser
+      const resultRealiser = await query(`
+        INSERT INTO realiser (id_prestation, id_personnel)
+        VALUES (?, ?)
+      `, [idPrestation, formData.id_personnel]);
+
+      // 3.2. Insérer dans la table contenir
+      const resultContenir = await query(`
+        INSERT INTO contenir (id_prestation, id_intervention)
+        VALUES (?, ?)
+      `, [idPrestation, idIntervention]);
+    }
+
+    console.log('Intervention, attribution, realiser, and contenir added successfully');
+    res.status(201).json({ message: 'Intervention, attribution, realiser, and contenir added successfully', resultIntervention, resultAttribution });
   } catch (error) {
-    console.error('Error adding intervention and attribution:', error);
+    console.error('Error adding intervention, attribution, realiser, and contenir:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
@@ -464,22 +500,35 @@ app.delete("/nurscare/deleteintervention/:id_intervention", async (req, res) => 
     if (!id_intervention) {
       return res.status(400).json({ message: "L'ID de l'intervention est requis" });
     }
-    const resultJonction = await query(
+
+    // 1. Supprimer les entrées dans la table contenir liées à l'id_intervention
+    const resultContenir = await query(
+      `DELETE FROM contenir WHERE id_intervention = ?`,
+      [id_intervention]
+    );
+
+    // 2. Vérifier si des entrées ont été supprimées de la table contenir
+    if (resultContenir.affectedRows > 0) {
+      console.log(`Entrées de la table de jointure supprimées pour l'id_intervention ${id_intervention}`);
+    }
+
+    // 3. Supprimer l'entrée dans la table attribuer liée à l'id_intervention
+    const resultAttribuer = await query(
       `DELETE FROM attribuer WHERE id_intervention = ?`,
       [id_intervention]
     );
-    if (resultJonction.affectedRows === 0) {
-      console.log(`Aucune entrée trouvée dans la table de jointure pour l'id_intervention ${id_intervention}`);
-    } else {
-      console.log(`Entrées de la table de jointure supprimées pour l'id_intervention ${id_intervention}`);
-    }
+
+    // 4. Supprimer l'entrée dans la table intervention
     const resultIntervention = await query(
       `DELETE FROM intervention WHERE id_intervention = ?`,
       [id_intervention]
     );
+
+    // 5. Vérifier si une intervention a été supprimée
     if (resultIntervention.affectedRows === 0) {
       return res.status(404).json({ message: "Intervention non trouvée" });
     }
+
     console.log(`Intervention supprimée : ID ${id_intervention}`);
     res.status(200).json({ message: "Intervention supprimée avec succès" });
   } catch (error) {
@@ -488,40 +537,7 @@ app.delete("/nurscare/deleteintervention/:id_intervention", async (req, res) => 
   }
 });
 
-//AJOUTER UNE PRESTATION
-app.post('/nurscare/addprestation', async (req, res) => {
-  try {
-    const formData = req.body;
 
-    const resultPrestation = await query(`
-      INSERT INTO prestation_de_soin (prix_prestation, etat_prestation, id_categorie, libelle_prestation, date_prestation)
-      VALUES (?, ?, ?, ?, ?)
-    `, [formData.prix_prestation, formData.etat_prestation, formData.id_categorie, formData.libelle_prestation, formData.date_prestation]);
-
-    const idPrestation = resultPrestation.insertId;
-
-    const resultRealiser = await query(`
-      INSERT INTO realiser (id_prestation, id_personnel)
-      VALUES (?, ?)
-    `, [idPrestation, formData.id_personnel]);
-
-    const resultContenir = await query(`
-      INSERT INTO contenir (id_prestation, id_intervention)
-      VALUES (?, ?)
-    `, [idPrestation, formData.id_intervention]);
-
-    console.log('Prestation de soin ajoutée avec succès');
-    res.status(201).json({
-      message: 'Prestation de soin ajoutée avec succès',
-      resultPrestation,
-      resultRealiser,
-      resultContenir
-    });
-  } catch (error) {
-    console.error('Erreur lors de l\'ajout de la prestation de soin :', error);
-    res.status(500).json({ message: 'Erreur interne du serveur' });
-  }
-});
 
 // ROUTE POUR SUPPRIMER UNE PRESTATION
 app.delete('/nurscare/deleteprestation/:idPrestation', async (req, res) => {
@@ -664,6 +680,60 @@ const computeRoutes = async (adresses: string[], startingPoint: string) => {
    await delay(1500);
    return result;
 };
+
+// ROUTE POUR MODIFIER UNE INTERVENTION
+app.put("/nurscare/updateintervention/:id_intervention", async (req, res) => {
+  try {
+    const { id_intervention } = req.params;
+    const { text, startDate, endDate, id_patient } = req.body;
+
+    const existingIntervention = await query('SELECT * FROM intervention WHERE id_intervention = ?', [id_intervention]);
+
+    if (!existingIntervention || existingIntervention.length === 0) {
+      return res.status(404).json({ message: "Intervention non trouvée" });
+    }
+
+    let updateQuery = 'UPDATE intervention SET';
+    const updateValues = [];
+
+    if (text) {
+      updateQuery += ' libelle_intervention = ?,';
+      updateValues.push(text);
+    }
+
+    if (startDate) {
+      updateQuery += ' date_intervention_debut = ?,';
+      updateValues.push(new Date(startDate));
+    }
+
+    if (endDate) {
+      updateQuery += ' date_intervention_fin = ?,';
+      updateValues.push(new Date(endDate));
+    }
+
+    if (id_patient) {
+      updateQuery += ' id_patient = ?,';
+      updateValues.push(id_patient);
+    }
+
+    updateQuery = updateQuery.slice(0, -1);
+
+    updateQuery += ' WHERE id_intervention = ?';
+    updateValues.push(id_intervention);
+
+    const resultIntervention = await query(updateQuery, updateValues);
+
+    console.log(`Intervention mise à jour avec succès : ID ${id_intervention}`);
+    res.status(200).json({ message: "Intervention mise à jour avec succès", resultIntervention });
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour de l\'intervention:', error);
+    res.status(500).json({ message: 'Erreur interne du serveur' });
+  }
+});
+
+
+
+// ROUTE POUR DELETE UNE INTERVENTION
 
 export { computeRoutes };
 
