@@ -115,7 +115,7 @@ app.get(
   async (request: express.Request, result: express.Response) => {
     try {
       let agendasPrestations = await query(`
-      SELECT prestation_de_soin.*, intervention.*, patient.*, personnel.* 
+      SELECT DISTINCT prestation_de_soin.*, intervention.*, patient.*, personnel.* 
       FROM intervention
       JOIN contenir ON intervention.id_intervention = contenir.id_intervention
       JOIN prestation_de_soin ON contenir.id_prestation = prestation_de_soin.id_prestation
@@ -473,9 +473,9 @@ app.post('/nurscare/addintervention', async (req, res) => {
     for (const idPrestation of formData.id_prestations) {
       // 3.1. Insérer dans la table realiser
       const resultRealiser = await query(`
-        INSERT INTO realiser (id_prestation, id_personnel)
-        VALUES (?, ?)
-      `, [idPrestation, formData.id_personnel]);
+        INSERT INTO realiser (id_prestation, id_personnel,id_intervention)
+        VALUES (?, ?, ?)
+      `, [idPrestation, formData.id_personnel,idIntervention ]);
 
       // 3.2. Insérer dans la table contenir
       const resultContenir = await query(`
