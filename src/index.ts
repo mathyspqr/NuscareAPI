@@ -115,13 +115,14 @@ app.get(
   async (request: express.Request, result: express.Response) => {
     try {
       let agendasPrestations = await query(`
-      SELECT DISTINCT prestation_de_soin.*, intervention.*, patient.*, personnel.* 
+      SELECT DISTINCT prestation_de_soin.*, intervention.*, patient.*, personnel.*
       FROM intervention
       JOIN contenir ON intervention.id_intervention = contenir.id_intervention
       JOIN prestation_de_soin ON contenir.id_prestation = prestation_de_soin.id_prestation
       JOIN patient ON intervention.id_patient = patient.id_patient
       JOIN realiser ON prestation_de_soin.id_prestation = realiser.id_prestation
-      JOIN personnel ON realiser.id_personnel = personnel.id_personnel;
+      JOIN personnel ON realiser.id_personnel = personnel.id_personnel
+      GROUP BY prestation_de_soin.id_prestation, intervention.id_intervention, patient.id_patient, personnel.id_personnel;          
       `);
 
       console.log(`Route "/nurscare/agendasprevisionnels" called`);
@@ -450,7 +451,7 @@ app.post("/nurscare/submitform", async (req, res) => {
   }
 });
 
-
+// ROUTE POUR ADD UNE INTERVENTION
 app.post('/nurscare/addintervention', async (req, res) => {
   try {
     const formData = req.body;
@@ -731,6 +732,32 @@ app.put("/nurscare/updateintervention/:id_intervention", async (req, res) => {
   }
 });
 
+//ROUTE POUR AJOUTER UNE PRESTATION SUR UNE INTERVENTION DEJA CREER
+app.post('/nurscare/ajouter-prestation/:id_intervention', async (req, res) => {
+  try {
+    const idIntervention = req.params.id_intervention;
+    const { id_prestations, id_personnel } = req.body;
+
+    for (const idPrestation of id_prestations) {
+      // Insérer dans la table realiser
+      const resultRealiser = await query(`
+        INSERT INTO realiser (id_prestation, id_personnel, id_intervention)
+        VALUES (?, ?, ?)
+      `, [idPrestation, id_personnel, idIntervention]);
+
+      // Insérer dans la table contenir
+      const resultContenir = await query(`
+        INSERT INTO contenir (id_prestation, id_intervention)
+        VALUES (?, ?)
+      `, [idPrestation, idIntervention]);
+    }
+
+    res.status(200).json({ message: 'Prestations ajoutées avec succès à l\'intervention.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de l\'ajout des prestations.' });
+  }
+});
 
 
 // ROUTE POUR DELETE UNE INTERVENTION
